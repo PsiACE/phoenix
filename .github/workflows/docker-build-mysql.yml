@@ -81,7 +81,6 @@ jobs:
       - name: Prepare image tags
         id: tags
         run: |
-          commit_tag="${PRIMARY_TAG}-${GITHUB_SHA::7}"
           variant_suffix=""
           if [ "$VARIANT" = "debug" ]; then
             variant_suffix="-debug"
@@ -90,11 +89,9 @@ jobs:
           tags=""
           if [ "${{ inputs.registry }}" = "ghcr" ] || [ "${{ inputs.registry }}" = "both" ]; then
             tags="${tags}ghcr.io/${IMAGE_NAME}:${PRIMARY_TAG}${variant_suffix}"$'\n'
-            tags="${tags}ghcr.io/${IMAGE_NAME}:${commit_tag}${variant_suffix}"$'\n'
           fi
           if [ "${{ inputs.registry }}" = "quay" ] || [ "${{ inputs.registry }}" = "both" ]; then
             tags="${tags}quay.io/${IMAGE_NAME}:${PRIMARY_TAG}${variant_suffix}"$'\n'
-            tags="${tags}quay.io/${IMAGE_NAME}:${commit_tag}${variant_suffix}"$'\n'
           fi
 
           {
