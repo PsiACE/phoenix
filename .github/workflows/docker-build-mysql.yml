@@ -23,17 +23,28 @@ on:
         description: "Primary image tag"
         required: true
         default: "mysql"
+      variant:
+        description: "Image variant to publish"
+        required: true
+        default: "nonroot"
+        type: choice
+        options:
+          - nonroot
+          - debug
+      platforms:
+        description: "Target platforms"
+        required: true
+        default: "linux/amd64,linux/arm64"
 
 jobs:
   publish:
     name: Publish MySQL-enabled image
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        variant: [nonroot, debug]
+    timeout-minutes: 45
     env:
       IMAGE_NAME: ${{ inputs.image_name }}
       PRIMARY_TAG: ${{ inputs.tag }}
+      VARIANT: ${{ inputs.variant }}
     steps:
       - name: Check out the repo
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -42,7 +53,7 @@ jobs:
 
       - name: Set BASE_IMAGE environment variable
         run: |
-          if [ "${{ matrix.variant }}" = "debug" ]; then
+          if [ "$VARIANT" = "debug" ]; then
             echo "BASE_IMAGE=gcr.io/distroless/python3-debian13:debug" >> "$GITHUB_ENV"
           else
             echo "BASE_IMAGE=gcr.io/distroless/python3-debian13:nonroot" >> "$GITHUB_ENV"
@@ -72,7 +83,7 @@ jobs:
         run: |
           commit_tag="${PRIMARY_TAG}-${GITHUB_SHA::7}"
           variant_suffix=""
-          if [ "${{ matrix.variant }}" = "debug" ]; then
+          if [ "$VARIANT" = "debug" ]; then
             variant_suffix="-debug"
           fi
 
@@ -95,7 +106,7 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7.0.0
         with:
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ inputs.platforms }}
           context: .
           file: ./Dockerfile
           push: true
