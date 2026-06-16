@@ -98,6 +98,9 @@ FROM denoland/deno:bin-2.1.4 AS deno-binary
 FROM ${BASE_IMAGE}
 WORKDIR /phoenix
 COPY --from=backend-builder /phoenix/.venv/ ./.venv
+COPY ./LICENSE /phoenix/LICENSE
+COPY ./IP_NOTICE /phoenix/IP_NOTICE
+COPY ./MODIFICATIONS.md /phoenix/MODIFICATIONS.md
 # Bundled local sandbox runtimes (Deno + CPython WASM). The Deno binary
 # is statically linked, so a single COPY into the distroless image keeps
 # the security/footprint properties documented in the comment block

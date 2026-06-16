@@ -1,0 +1,111 @@
+name: Publish MySQL-enabled Docker image
+permissions:
+  contents: read
+  packages: write
+
+on:
+  workflow_dispatch:
+    inputs:
+      registry:
+        description: "Registry to publish to"
+        required: true
+        default: "ghcr"
+        type: choice
+        options:
+          - ghcr
+          - quay
+          - both
+      image_name:
+        description: "Image name without the registry prefix"
+        required: true
+        default: "psiace/phoenix-mysql"
+      tag:
+        description: "Primary image tag"
+        required: true
+        default: "mysql"
+
+jobs:
+  publish:
+    name: Publish MySQL-enabled image
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        variant: [nonroot, debug]
+    env:
+      IMAGE_NAME: ${{ inputs.image_name }}
+      PRIMARY_TAG: ${{ inputs.tag }}
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set BASE_IMAGE environment variable
+        run: |
+          if [ "${{ matrix.variant }}" = "debug" ]; then
+            echo "BASE_IMAGE=gcr.io/distroless/python3-debian13:debug" >> "$GITHUB_ENV"
+          else
+            echo "BASE_IMAGE=gcr.io/distroless/python3-debian13:nonroot" >> "$GITHUB_ENV"
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      - name: Log in to GHCR
+        if: ${{ inputs.registry == 'ghcr' || inputs.registry == 'both' }}
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Quay
+        if: ${{ inputs.registry == 'quay' || inputs.registry == 'both' }}
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
+        with:
+          registry: quay.io
+          username: ${{ secrets.QUAY_USERNAME }}
+          password: ${{ secrets.QUAY_PASSWORD }}
+
+      - name: Prepare image tags
+        id: tags
+        run: |
+          commit_tag="${PRIMARY_TAG}-${GITHUB_SHA::7}"
+          variant_suffix=""
+          if [ "${{ matrix.variant }}" = "debug" ]; then
+            variant_suffix="-debug"
+          fi
+
+          tags=""
+          if [ "${{ inputs.registry }}" = "ghcr" ] || [ "${{ inputs.registry }}" = "both" ]; then
+            tags="${tags}ghcr.io/${IMAGE_NAME}:${PRIMARY_TAG}${variant_suffix}"$'\n'
+            tags="${tags}ghcr.io/${IMAGE_NAME}:${commit_tag}${variant_suffix}"$'\n'
+          fi
+          if [ "${{ inputs.registry }}" = "quay" ] || [ "${{ inputs.registry }}" = "both" ]; then
+            tags="${tags}quay.io/${IMAGE_NAME}:${PRIMARY_TAG}${variant_suffix}"$'\n'
+            tags="${tags}quay.io/${IMAGE_NAME}:${commit_tag}${variant_suffix}"$'\n'
+          fi
+
+          {
+            echo "tags<<EOF"
+            printf "%s" "$tags"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7.0.0
+        with:
+          platforms: linux/amd64,linux/arm64
+          context: .
+          file: ./Dockerfile
+          push: true
+          sbom: true
+          provenance: mode=max
+          tags: ${{ steps.tags.outputs.tags }}
+          labels: |
+            org.opencontainers.image.title=Phoenix MySQL-enabled image
+            org.opencontainers.image.description=Modified Phoenix image with MySQL-compatible storage backend support
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          build-args: |
+            BASE_IMAGE=${{ env.BASE_IMAGE }}
